@@ -3,13 +3,28 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
-bot = discord.Bot()
+
+game_thumbnail_dict: dict[str, str] = {
+    "ssbu": r"https://www.smashbros.com/assets_v2/img/howtoplay/top_icon_basic_pc.png"
+}
+
+type_color_dict: dict[str, int] = {
+    "All Skill Levels":  0xFFBD0E,
+    "Veteran Players":   0xCF2845,
+    "Glorious Smashers": 0x795BB7,
+    "Anything Goes":     0x57AFED,
+    "Playground":        0x1DB247,
+    "amiibo Battle":     0x1F9796,
+    # TODO: Find a picture of the actual color
+    "Beginners Only":    0x808000,
+    "Elite Only":        0xFFBE0E 
+}
 
 class BattleArena:
     def __init__(self, user_id: int, id: str, password: int | None, name: str,
                  max_players: int | None, visibility: str | None, type: str |
                  None, format: str | None) -> None:
-        # Arena properties
+        # In-game properties
         self.id = id
         self.name = name
         self.password = password
@@ -22,27 +37,49 @@ class BattleArena:
         self.user_id = user_id
         # TODO: Add field
         # self.data_time_created = ""
-        pass
+
+    # HACK: Don't like the idea of programmatically allowing a "different"
+    # author
+    def get_embed(self, author: discord.Member | discord.User) -> discord.Embed:
+        """
+        Creates and returns a Discord embed summarizing the details of the
+        battle arena.
+        """
+
+        arena_color = (
+            type_color_dict[self.type] if self.type is not None
+            else 0x000000
+        )
+
+        avatar_url = (
+            author.avatar.url if author.avatar is not None 
+            else author.default_avatar.url
+        )
+
+        response_embed = (
+            discord.Embed(title=self.name, color=arena_color)
+            .set_footer(text=f"Opened by {author.name}", icon_url=avatar_url)
+            .set_thumbnail(url=game_thumbnail_dict["ssbu"])
+        )
+
+        arena_details = f"- **ID**: {self.id}"
+
+        # Adding optional fields
+        if self.password is not None:
+            arena_details += f"\n- **Password**: {str(self.password)}"
+        if self.max_players is not None:
+            arena_details += f"\n- **Max Players**: {str(self.max_players)}"
+        if self.type is not None:
+            arena_details += f"\n- **Type**: {self.type}"
+        if self.format is not None:
+            arena_details += f"\n- **Format**: {self.format}"
+
+        return response_embed.add_field(name="Details", value=arena_details)
+
+bot = discord.Bot()
 
 # TODO: Make a dictionary of guild id's to lists of BattleArenas
 arenas: dict[int, BattleArena] = {}
-
-thumbnails: dict[str, str] = {
-    "ssbu": r"https://www.smashbros.com/assets_v2/img/howtoplay/top_icon_basic_pc.png"
-}
-
-types_to_colors: dict[str, int] = {
-    "None": 0xFFFFFF,
-    "All Skill Levels": 0xFFBD0E,
-    "Veteran Players": 0xCF2845,
-    "Glorious Smashers": 0x795BB7,
-    "Anything Goes": 0x57AFED,
-    "Playground": 0x1DB247,
-    "amiibo Battle": 0x1F9796,
-    # TODO: Find a picture of the actual color
-    "Beginners Only": 0x808000,
-    "Elite Only": 0xFFBE0E 
-}
 
 visibility_options: list[str] = [
     "Public",
@@ -97,7 +134,7 @@ async def on_ready():
     "type",
     discord.SlashCommandOptionType.string,
     description="The type of the Battle Arena",
-    choices=types_to_colors.keys(),
+    choices=type_color_dict.keys(),
     required=False
 )
 @discord.option(
@@ -117,36 +154,19 @@ async def add_arena(
     format: str | None
 ):
     # TODO: Add ID validation
-    hash_input = ctx.author.id + ctx.guild_id
+    arena_author = ctx.author
+    hash_input = arena_author.id + ctx.guild_id
+
     if hash_input in arenas:
         await ctx.respond("You already have an arena open!")
     else:
         arena_name = name if name is not None else f"{ctx.author.name}'s Arena"
-        arena_color = types_to_colors[type] if type is not None else types_to_colors["None"]
 
-        new_arena = BattleArena(ctx.author.id, id, password, arena_name,
+        new_arena = BattleArena(arena_author.id, id, password, arena_name,
                                 max_players, "", type, format)
-        avatar_url = ctx.author.avatar.url if ctx.author.avatar is not None else ctx.author.default_avatar.url
         arenas[hash_input] = new_arena
 
-        response_embed = (
-            discord.Embed(title=new_arena.name, color=arena_color)
-            .add_field(name="ID:", value=new_arena.id)
-            .set_footer(text=f"Owned by {ctx.author.name}", icon_url=avatar_url)
-            .set_thumbnail(url=thumbnails["ssbu"])
-        )
-
-        # Adding optional fields
-        if password is not None:
-            response_embed.add_field(name="Password:", value=str(password))
-        if max_players is not None:
-            response_embed.add_field(name="Max Players:", value=str(max_players))
-        if type is not None:
-            response_embed.add_field(name="Type:", value=type)
-        if format is not None:
-            response_embed.add_field(name="Format:", value=format)
-
-        await ctx.respond(embed=response_embed)
+        await ctx.respond(embed=new_arena.get_embed(arena_author))
 
 @bot.slash_command(name="close")
 async def close_arena(ctx: discord.ApplicationContext):
@@ -165,12 +185,12 @@ async def list_arenas(ctx: discord.ApplicationContext):
     for key, value in arenas.items():
         cur_guild_id = key - value.user_id
         if cur_guild_id == ctx.guild_id:
-            arena_str = f"- Owner: {ctx.author.mention}\n- ID: {value.id}"
+            arena_details = f"- Owner: {ctx.author.mention}\n- ID: {value.id}"
 
             if value.password is not None:
-                arena_str += f" / Password: {value.password}"
+                arena_details += f" / Password: {value.password}"
 
-            response_embed.add_field(name=value.name, value=arena_str, inline=False)
+            response_embed.add_field(name=value.name, value=arena_details, inline=False)
 
     if len(response_embed.fields) == 0:
         response_embed.add_field(name="", value="There are no arenas open in this server!")
