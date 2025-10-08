@@ -24,9 +24,10 @@ type_color_dict: dict[str, int] = {
 arena_id_regex: re.Pattern[str] = re.compile(r"[A-HJ-NP-Y0-9]{5}")
 
 class BattleArena:
-    def __init__(self, user_id: int, id: str, password: int | None, name: str,
-                 max_players: int | None, visibility: str | None, type: str |
-                 None, format: str | None) -> None:
+    def __init__(self, author: discord.Member | discord.User, id: str,
+                 password: int | None, name: str, max_players: int | None,
+                 visibility: str | None, type: str | None,
+                 format: str | None) -> None:
         # In-game properties
         self.id = id
         self.name = name
@@ -37,13 +38,11 @@ class BattleArena:
         self.max_players = max_players
 
         # Metadata
-        self.user_id = user_id
+        self.author = author 
         # TODO: Add field
         # self.data_time_created = ""
 
-    # HACK: Don't like the idea of programmatically allowing a "different"
-    # author
-    def get_embed(self, author: discord.Member | discord.User) -> discord.Embed:
+    def get_embed(self) -> discord.Embed:
         """
         Creates and returns a Discord embed summarizing the details of the
         battle arena.
@@ -55,13 +54,13 @@ class BattleArena:
         )
 
         avatar_url = (
-            author.avatar.url if author.avatar is not None 
-            else author.default_avatar.url
+            self.author.avatar.url if self.author.avatar is not None 
+            else self.author.default_avatar.url
         )
 
         response_embed = (
             discord.Embed(title=self.name, color=arena_color)
-            .set_footer(text=f"Opened by {author.name}", icon_url=avatar_url)
+            .set_footer(text=f"Opened by {self.author.name}", icon_url=avatar_url)
             .set_thumbnail(url=game_thumbnail_dict["ssbu"])
         )
 
@@ -168,11 +167,11 @@ async def add_arena(
                 else f"{ctx.author.name}'s Arena"
             )
 
-            new_arena = BattleArena(arena_author.id, id, password, arena_name,
+            new_arena = BattleArena(arena_author, id, password, arena_name,
                                 max_players, "", type, format)
             arenas[hash_input] = new_arena
 
-            await ctx.respond(embed=new_arena.get_embed(arena_author))
+            await ctx.respond(embed=new_arena.get_embed())
         else:
             await ctx.respond("The provided arena ID was invalid!",
                               ephemeral=True)
@@ -192,14 +191,15 @@ async def list_arenas(ctx: discord.ApplicationContext):
                                    color=0x000000)
 
     for key, value in arenas.items():
-        cur_guild_id = key - value.user_id
+        cur_guild_id = key - value.author.id
         if cur_guild_id == ctx.guild_id:
-            arena_details = f"- Owner: {ctx.author.mention}\n- ID: {value.id}"
+            arena_details = f"- Owner: {value.author.mention}\n- ID: {value.id}"
 
             if value.password is not None:
                 arena_details += f" / Password: {value.password}"
 
-            response_embed.add_field(name=value.name, value=arena_details, inline=False)
+            response_embed.add_field(name=value.name, value=arena_details,
+                                     inline=False)
 
     if len(response_embed.fields) == 0:
         response_embed.add_field(name="", value="There are no arenas open in this server!")
