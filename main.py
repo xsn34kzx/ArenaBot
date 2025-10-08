@@ -1,5 +1,6 @@
 import discord
 import os
+import re
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -19,6 +20,8 @@ type_color_dict: dict[str, int] = {
     "Beginners Only":    0x808000,
     "Elite Only":        0xFFBE0E 
 }
+
+arena_id_regex: re.Pattern[str] = re.compile(r"[A-HJ-NP-Y0-9]{5}")
 
 class BattleArena:
     def __init__(self, user_id: int, id: str, password: int | None, name: str,
@@ -153,20 +156,26 @@ async def add_arena(
     type: str | None,
     format: str | None
 ):
-    # TODO: Add ID validation
     arena_author = ctx.author
     hash_input = arena_author.id + ctx.guild_id
 
     if hash_input in arenas:
-        await ctx.respond("You already have an arena open!")
+        await ctx.respond("You already have an arena open!", ephemeral=True)
     else:
-        arena_name = name if name is not None else f"{ctx.author.name}'s Arena"
+        if arena_id_regex.match(id) is not None:
+            arena_name = (
+                name if name is not None 
+                else f"{ctx.author.name}'s Arena"
+            )
 
-        new_arena = BattleArena(arena_author.id, id, password, arena_name,
+            new_arena = BattleArena(arena_author.id, id, password, arena_name,
                                 max_players, "", type, format)
-        arenas[hash_input] = new_arena
+            arenas[hash_input] = new_arena
 
-        await ctx.respond(embed=new_arena.get_embed(arena_author))
+            await ctx.respond(embed=new_arena.get_embed(arena_author))
+        else:
+            await ctx.respond("The provided arena ID was invalid!",
+                              ephemeral=True)
 
 @bot.slash_command(name="close")
 async def close_arena(ctx: discord.ApplicationContext):
