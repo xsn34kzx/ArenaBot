@@ -80,7 +80,6 @@ class BattleArena:
 
 bot = discord.Bot()
 
-# TODO: Make a dictionary of guild id's to lists of BattleArenas
 arenas: dict[int, BattleArena] = {}
 
 visibility_options: list[str] = [
@@ -100,7 +99,7 @@ async def on_ready():
     print(f"{bot.user} is ready and online!")
 
 @bot.slash_command(
-    name="arena", 
+    name="arena",
     description="Open a Battle Arena"
 )
 @discord.option(
@@ -111,21 +110,21 @@ async def on_ready():
     max_length=5
 )
 @discord.option(
-    "password", 
+    "password",
     discord.SlashCommandOptionType.integer,
     description="The password of the Battle Arena, which can be 8 digits at most",
     max_value=99999999,
     required=False
 )
 @discord.option(
-    "name", 
+    "name",
     discord.SlashCommandOptionType.string,
     description="The name of the Battle Arena",
     max_length=22,
     required=False
 )
 @discord.option(
-    "max_players", 
+    "max_players",
     discord.SlashCommandOptionType.integer,
     description="The maximum number of players allowed in the Battle Arena",
     min_value=2,
@@ -185,6 +184,24 @@ async def close_arena(ctx: discord.ApplicationContext):
     else:
         await ctx.respond("You don't have an arena to close!", ephemeral=True)
 
+@bot.slash_command(
+    name="find",
+    description="Find a Battle Arena from a User"
+)
+@discord.option(
+    "user",
+    discord.SlashCommandOptionType.user
+)
+async def find_arena(ctx: discord.ApplicationContext, user: discord.User):
+    hash_input = user.id + ctx.guild_id
+
+    if hash_input in arenas:
+        await ctx.respond(embed=arenas[hash_input].get_embed(), ephemeral=True)
+    else:
+        await ctx.respond(f"Couldn't find an arena opened by {user.mention}!",
+                          ephemeral=True)
+
+# TODO: Add filter categories
 @bot.slash_command(name="list")
 async def list_arenas(ctx: discord.ApplicationContext):
     response_embed = discord.Embed(title=f"{ctx.guild.name} - Battle Arenas",
