@@ -39,6 +39,8 @@ class BattleArena:
 
         # Metadata
         self.author = author 
+        # TODO: Make this int | None
+        self.message_id = 0
         # TODO: Add field
         # self.data_time_created = ""
 
@@ -170,7 +172,10 @@ async def add_arena(
                                 max_players, "", type, format)
             arenas[hash_input] = new_arena
 
-            await ctx.respond(embed=new_arena.get_embed())
+            interaction = await ctx.send_response(embed=new_arena.get_embed())
+            message = await interaction.original_response()
+
+            new_arena.message_id = message.id
         else:
             await ctx.respond("The provided arena ID was invalid!",
                               ephemeral=True)
@@ -180,6 +185,19 @@ async def close_arena(ctx: discord.ApplicationContext):
     hash_input = ctx.author.id + ctx.guild_id
     cur_arena = arenas.pop(hash_input, None)
     if cur_arena is not None:
+        try:
+            print(cur_arena.message_id)
+            last_message = await ctx.channel.fetch_message(cur_arena.message_id)
+            await last_message.delete()
+        except discord.NotFound:
+            # NOTE: Purposefully ignoring if the message was already deleted
+            pass
+        # TODO: Do something with these exceptions
+        except discord.Forbidden:
+            pass
+        except discord.HTTPException:
+            pass
+
         await ctx.respond("Your arena has been closed!", ephemeral=True)
     else:
         await ctx.respond("You don't have an arena to close!", ephemeral=True)
@@ -222,5 +240,115 @@ async def list_arenas(ctx: discord.ApplicationContext):
         response_embed.add_field(name="", value="There are no arenas open in this server!")
 
     await ctx.respond(embed=response_embed)
+
+@bot.slash_command(
+    name="edit",
+    description="Edit a Battle Arena"
+)
+@discord.option(
+    "id",
+    discord.SlashCommandOptionType.string,
+    description="The ID of the Battle Arena",
+    min_length=5,
+    max_length=5,
+    required=False
+)
+@discord.option(
+    "password",
+    discord.SlashCommandOptionType.integer,
+    description="The password of the Battle Arena, which can be 8 digits at most",
+    max_value=99999999,
+    required=False
+)
+@discord.option(
+    "name",
+    discord.SlashCommandOptionType.string,
+    description="The name of the Battle Arena",
+    max_length=22,
+    required=False
+)
+@discord.option(
+    "max_players",
+    discord.SlashCommandOptionType.integer,
+    description="The maximum number of players allowed in the Battle Arena",
+    min_value=2,
+    max_value=8,
+    required=False
+)
+@discord.option(
+    "type",
+    discord.SlashCommandOptionType.string,
+    description="The type of the Battle Arena",
+    choices=type_color_dict.keys(),
+    required=False
+)
+@discord.option(
+    "format",
+    discord.SlashCommandOptionType.string,
+    description="The format of the Battle Arena",
+    choices=format_options,
+    required=False
+)
+async def edit_arena(
+    ctx: discord.ApplicationContext,
+    id: str | None,
+    password: int | None,
+    name: str | None,
+    max_players: int | None,
+    type: str | None,
+    format: str | None
+):
+    hash_input = ctx.guild_id + ctx.author.id
+
+    if hash_input not in arenas:
+        await ctx.send_response("You don't have an arena to edit!",
+                                ephemeral=True)
+    else:
+        cur_arena = arenas[hash_input]
+
+        arena_modified = False
+
+        if id is not None and arena_id_regex.match(id):
+            if id != cur_arena.id:
+                cur_arena.id = id
+                arena_modified = True
+        if password is not None:
+            if password != cur_arena.password:
+                cur_arena.password = password
+                arena_modified = True
+        if name is not None:
+            if name != cur_arena.name:
+                cur_arena.name = name
+                arena_modified = True
+        if max_players is not None:
+            if max_players != cur_arena.max_players:
+                cur_arena.max_players = max_players
+                arena_modified = True
+        if type is not None:
+            if type != cur_arena.type:
+                cur_arena.type = type
+                arena_modified = True
+        if format is not None:
+            if format != cur_arena.format:
+                cur_arena.format = format
+                arena_modified = True
+
+        if arena_modified:
+            try:
+                message = await ctx.fetch_message(cur_arena.message_id)
+                await message.edit(embed=cur_arena.get_embed())
+            except discord.NotFound:
+                message = await ctx.send(embed=cur_arena.get_embed())
+                cur_arena.message_id = message.id
+            # TODO: Do something with these exceptions
+            except discord.Forbidden:
+                pass
+            except discord.HTTPException:
+                pass
+            await ctx.send_response("Your arena was edited successfully!",
+                                    ephemeral=True)
+        else:
+            await ctx.send_response("No changes were made to your arena!",
+                                    ephemeral=True)
 
 bot.run(os.getenv('TOKEN'))
